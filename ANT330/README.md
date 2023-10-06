@@ -45,6 +45,19 @@ cd app
 ./deploy.sh
 ```
 
+## Access Open Search Dashboard
+- Navigate to OpenSearch dashboard URL shown at the end of `./create-vpc` command
+- Use the following command to copy OpenSearch master password to clipboard
+```
+# OSX
+aws secretsmanager get-secret-value --secret-id csa-v1-app-infra-open-search-master-password --query "SecretString" --output text | pbcopy
+
+# Windows
+aws secretsmanager get-secret-value --secret-id csa-v1-app-infra-open-search-master-password --query "SecretString" --output text | clip
+```
+
+- Login to OpenSearch dashboard with username: `admin` and the password in your clipboard
+
 ## Cleaning up AWS Account
 
 Once you finish exploring this demo, you can delete all resources by running the following command.
