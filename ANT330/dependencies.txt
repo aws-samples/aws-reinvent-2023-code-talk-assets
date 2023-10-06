@@ -1,0 +1,20 @@
+<dependency>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-connector-kafka</artifactId>
+    <version>${flink.version}</version>
+</dependency>
+<dependency>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-connector-opensearch</artifactId>
+    <version>1.0.1-1.16</version>
+</dependency>
+<dependency>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-runtime-web</artifactId>
+    <version>${flink.version}</version>
+</dependency>
+<dependency>
+    <groupId>com.amazonaws</groupId>
+    <artifactId>aws-kinesisanalytics-runtime</artifactId>
+    <version>1.2.0</version>
+</dependency>

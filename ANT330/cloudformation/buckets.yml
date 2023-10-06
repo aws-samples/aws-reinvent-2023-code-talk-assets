@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  S3 bucket used to upload corner speed analysis app deployment
+  artifacts.
+Parameters:
+  CoreFunctionsStackName:
+    Type: String
+Resources:
+  DeploymentArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: Private
+      BucketName: !Sub "${AWS::StackName}-${AWS::AccountId}-${AWS::Region}"
+
+  EmptyDeploymentArtifactsBucket:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: 
+        Fn::ImportValue: 
+          !Sub "${CoreFunctionsStackName}-S3CleanupFunction"
+      Bucket: !Ref DeploymentArtifactsBucket
+
+Outputs:
+  DeploymentArtifactsBucket:
+    Description: Bucket for storing deployment artifacts
+    Value: !Ref DeploymentArtifactsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-DeploymentArtifactsBucket
+  

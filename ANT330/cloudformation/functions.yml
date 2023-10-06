@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Lambda functions used to clean-up resources when deleting
+  CloudFormation stacks created for corner speed analysis app.
+Resources:
+  S3CleanupRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: 
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyName: S3ListAndDelete
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action: s3:*
+                  Resource: "*"
+          - PolicyName: CloudWatchAccess
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:*
+                  Resource: arn:aws:logs:*:*:* 
+
+  S3CleanupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.7
+      Handler: index.handler
+      Timeout: 900
+      Role: !GetAtt S3CleanupRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import logging
+
+          s3 = boto3.resource('s3')
+
+          def handler(event, context):
+            try:
+              logging.info("Cleanup started")
+              if event["RequestType"] == "Delete":
+                bucket = event["ResourceProperties"]["Bucket"]
+                s3.Bucket(bucket).objects.all().delete()
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, "7EC7FB70-10FB-4B5A-A4A2-9C0C4588A358")
+            except Exception:
+                logging.exception("Cleanup failed")
+                cfnresponse.send(event, context, cfnresponse.FAILED, {}, "7EC7FB70-10FB-4B5A-A4A2-9C0C4588A358")
+
+Outputs:
+  S3CleanupFunction:
+    Description: Custom cloudformation resource to empty S3 buckets before deleting them
+    Value: !GetAtt S3CleanupFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-S3CleanupFunction

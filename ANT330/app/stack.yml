@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Corner speed analysis app
+Parameters:
+  JarVersion:
+    Type: String
+    Description: Jar package version
+    AllowedPattern: ".+"
+  CoreBucketsStackName:
+    Type: String
+  VPCStackName:
+    Type: String
+  SecurityGroupsStackName:
+    Type: String
+  ApplicationInfrastructureStackName:
+    Type: String
+
+Resources:
+  Role:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - kinesisanalytics.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+          - PolicyName: VpcConfigurationPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: VPCReadOnlyPermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeVpcs
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeDhcpOptions
+                  Resource: "*"
+                - Sid: ENIReadWritePermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:CreateNetworkInterfacePermission
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                  Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonKinesisFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+        - arn:aws:iam::aws:policy/AmazonMSKFullAccess
+  CornerSpeedAnalysis:
+    Type: "AWS::KinesisAnalyticsV2::Application"
+    Properties:
+      RuntimeEnvironment: FLINK-1_15
+      ServiceExecutionRole: !GetAtt Role.Arn
+      ApplicationDescription: "Corner speed analysis app"
+      ApplicationConfiguration:
+        ApplicationCodeConfiguration:
+          CodeContent:
+            S3ContentLocation:
+              BucketARN: !Sub
+                - "arn:aws:s3:::${DeploymentArtifactsBucket}"
+                - DeploymentArtifactsBucket: 
+                    Fn::ImportValue: 
+                      !Sub "${CoreBucketsStackName}-DeploymentArtifactsBucket"
+              FileKey: !Sub "flink/msf-demo-${JarVersion}.jar"
+          CodeContentType: "ZIPFILE"
+        VpcConfigurations:
+          - SecurityGroupIds:
+              - Fn::ImportValue:
+                  !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+              - Fn::ImportValue:
+                  !Sub "${SecurityGroupsStackName}-Internet-Access"
+            SubnetIds:
+              - Fn::ImportValue:
+                  !Sub "${VPCStackName}-PrivateSubnet1AID"
+              - Fn::ImportValue:
+                  !Sub "${VPCStackName}-PrivateSubnet2AID"
+              - Fn::ImportValue: 
+                  !Sub "${VPCStackName}-PrivateSubnet3AID"
+        FlinkApplicationConfiguration:
+          CheckpointConfiguration:
+            ConfigurationType: 'CUSTOM'
+            CheckpointingEnabled: True
+            CheckpointInterval: 5000
+            MinPauseBetweenCheckpoints: 500
+          MonitoringConfiguration:
+            ConfigurationType: 'CUSTOM'
+            MetricsLevel: 'APPLICATION'
+            LogLevel: 'INFO'
+          ParallelismConfiguration:
+            ConfigurationType: 'CUSTOM'
+            Parallelism: 1
+            ParallelismPerKPU: 1
+            AutoScalingEnabled: False
+        ApplicationSnapshotConfiguration:
+          SnapshotsEnabled: True
+        EnvironmentProperties:
+          PropertyGroups:
+            - PropertyGroupId: FlinkApplicationProperties
+              PropertyMap:
+                KAFKA_BOOTSTRAP_SERVERS: !Sub "{{resolve:ssm:${ApplicationInfrastructureStackName}-msk-cluster-bootstrap-broker-string}}"
+                OPEN_SEARCH_HOST: !Sub "{{resolve:ssm:${ApplicationInfrastructureStackName}-open-search-endpoint}}"
+                OPEN_SEARCH_PORT: 443
+                OPEN_SEARCH_SCHEME: "https"
+                OPEN_SEARCH_USERNAME: "admin"
+                OPEN_SEARCH_PASSWORD: !Sub "{{resolve:secretsmanager:${ApplicationInfrastructureStackName}-open-search-master-password:SecretString}}"
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 1
+  LogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref LogGroup
+  AppLogs:
+    Type: AWS::KinesisAnalyticsV2::ApplicationCloudWatchLoggingOption
+    Properties:
+      ApplicationName: !Ref CornerSpeedAnalysis
+      CloudWatchLoggingOption:
+        LogStreamARN: !Sub
+          - "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${LogGroupName}:log-stream:${LogStreamName}"
+          - LogGroupName: !Ref LogGroup
+            LogStreamName: !Ref LogStream
+  
+  MsfAppStartStopHandlerFunctionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+          - PolicyName: VpcConfigurationPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: VPCReadOnlyPermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeVpcs
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeDhcpOptions
+                  Resource: "*"
+                - Sid: ENIReadWritePermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:CreateNetworkInterfacePermission
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                  Resource: "*"
+                - Sid: MSFPermissions 
+                  Effect: Allow
+                  Action:
+                    - kinesisanalytics:DescribeApplication 
+                    - kinesisanalytics:StartApplication
+                    - kinesisanalytics:StopApplication
+                  Resource:
+                    Fn::Sub:
+                      - "arn:${AWS::Partition}:kinesisanalytics:${AWS::Region}:${AWS::AccountId}:application/${CornerSpeedAnalysis}"
+                      - CornerSpeedAnalysis: !Ref CornerSpeedAnalysis
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+
+  MsfAppStartStopHandlerFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      MemorySize: 1024
+      Runtime: "python3.9"
+      Handler: "index.handler"
+      Role: !GetAtt MsfAppStartStopHandlerFunctionRole.Arn
+      Timeout: 120
+      VpcConfig:
+        SubnetIds:
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet1AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet2AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet3AID"
+        SecurityGroupIds:
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Internet-Access"
+      Code:
+        ZipFile: |
+          import cfnresponse
+          import logging
+          import signal
+          import boto3
+          import time
+
+          LOGGER = logging.getLogger()
+          LOGGER.setLevel(logging.INFO)
+
+          timeout_seconds = 550
+          poll_interval_seconds = 1
+
+
+          def handler(event, context):
+              # Setup alarm for remaining runtime minus a second
+              signal.alarm(timeout_seconds)
+              try:
+                  LOGGER.info('Request Event: %s', event)
+                  LOGGER.info('Request Context: %s', context)
+                  if event['RequestType'] == 'Create':
+                      start_app(event['ResourceProperties']['AppName'])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource created"})
+                  elif event['RequestType'] == 'Update':
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource updated"})
+                  elif event['RequestType'] == 'Delete':
+                      stop_app(event['ResourceProperties']['AppName'])
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource deleted"})
+                  else:
+                      err = f"Unknown RequestType: {event['RequestType']}"
+                      LOGGER.error(err)
+                      cfnresponse.send(
+                          event, context, cfnresponse.FAILED, {"Message": err})
+              except Exception as e:
+                  LOGGER.error("Failed %s", e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED,
+                                  {"Message": str(e)})
+
+
+          def start_app(appName):
+              client = boto3.client('kinesisanalyticsv2')
+              desc_response = client.describe_application(ApplicationName=appName)
+              status = desc_response['ApplicationDetail']['ApplicationStatus']
+              if status == "READY":
+                  # We assume that after a successful invocation of this API
+                  # application would not be in READY state.
+                  client.start_application(ApplicationName=appName)
+              while (True):
+                  desc_response = client.describe_application(ApplicationName=appName)
+                  status = desc_response['ApplicationDetail']['ApplicationStatus']
+                  if status != "STARTING":
+                      if status != "RUNNING":
+                          raise Exception(f"Unable to start the app in state: {status}")
+                      LOGGER.info(f"Application status changed: {status}")
+                      break
+                  else:
+                      time.sleep(poll_interval_seconds)
+
+          def stop_app(appName):
+              client = boto3.client('kinesisanalyticsv2')
+              while (True):
+                  desc_response = client.describe_application(ApplicationName=appName)
+                  status = desc_response['ApplicationDetail']['ApplicationStatus']
+                  if status == "RUNNING":
+                    # We assume that after a successful invocation of this API
+                    # application would not be in RUNNING state.
+                    client.stop_application(ApplicationName=appName, Force=True)
+                  elif status != "FORCE_STOPPING" and status != "UPDATING":
+                      if status != "READY":
+                          raise Exception(f"Unable to stop the app in state: {status}")
+                      LOGGER.info(f"Application status changed: {status}")
+                      break
+                  else:
+                      time.sleep(poll_interval_seconds)
+
+
+          def timeout_handler(_signal, _frame):
+              '''Handle SIGALRM'''
+              raise Exception('Operation timed out')
+
+
+          signal.signal(signal.SIGALRM, timeout_handler)
+          
+
+  MsfAppStartStopCustomResource:
+    Type: "AWS::CloudFormation::CustomResource"
+    DependsOn: AppLogs
+    Properties:
+      ServiceToken: !GetAtt MsfAppStartStopHandlerFunction.Arn
+      AppName: !Ref CornerSpeedAnalysis

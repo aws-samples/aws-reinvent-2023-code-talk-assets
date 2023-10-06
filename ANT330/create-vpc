@@ -1,0 +1,66 @@
+#!/bin/bash
+
+set -e
+
+if [ ! -f "$HOME/.ssh/id_rsa.pub" ]; then
+    echo "ERROR: Default SSH key is not setup. Try running ssh-keygen first."
+    exit 1
+fi
+
+if [ -z $STACK_PREFIX ]; then
+    STACK_PREFIX="csa-v1"
+fi
+
+STACK_CORE_FUNCTIONS="${STACK_PREFIX}-core-functions"
+STACK_CORE_BUCKETS="${STACK_PREFIX}-core-buckets"
+STACK_CORE_VPC="${STACK_PREFIX}-core-vpc"
+STACK_CORE_SGS="${STACK_PREFIX}-core-security-groups"
+STACK_APP_INFRA="${STACK_PREFIX}-app-infra"
+STACK_DEV_INSTANCE="${STACK_PREFIX}-dev-instance"
+AMAZON_LINUX_IMAGE_ID=$(aws ssm get-parameters --names /aws/service/ami-amazon-linux-latest/amzn2-ami-kernel-5.10-hvm-x86_64-gp2 --query "Parameters[0].Value" --output text)
+
+echo "INFO: Deploying ${STACK_CORE_FUNCTIONS}"
+aws cloudformation deploy --stack-name "${STACK_CORE_FUNCTIONS}" --capabilities CAPABILITY_IAM --template-file cloudformation/functions.yml
+
+echo "INFO: Deploying ${STACK_CORE_BUCKETS}"
+aws cloudformation deploy --stack-name "${STACK_CORE_BUCKETS}" --capabilities CAPABILITY_IAM --template-file cloudformation/buckets.yml --parameter-overrides "CoreFunctionsStackName=${STACK_CORE_FUNCTIONS}"
+
+AZS=$(aws ec2 describe-availability-zones | jq -r '.AvailabilityZones[].ZoneName' | head -3 | tr '\n' ',' | sed 's/,$//')
+echo "INFO: Deploying ${STACK_CORE_VPC} AZs=$AZS"
+DEPLOYMENT_ARTIFACTS_BUCKET=$(aws cloudformation describe-stacks --stack-name $STACK_CORE_BUCKETS | jq -r -c '.Stacks[0].Outputs[] | select(.OutputKey == "DeploymentArtifactsBucket") | .OutputValue')
+aws cloudformation deploy --stack-name $STACK_CORE_VPC --capabilities CAPABILITY_IAM --template-file cloudformation/vpc.yml --s3-bucket $DEPLOYMENT_ARTIFACTS_BUCKET --s3-prefix cloudformation/processed --parameter-overrides "AvailabilityZones=$AZS" "NumberOfAZs=3"
+
+echo "INFO: Deploying ${STACK_CORE_SGS}"
+aws cloudformation deploy --stack-name $STACK_CORE_SGS --template-file cloudformation/security-groups.yml --parameter-overrides "VPCStackName=${STACK_CORE_VPC}"
+
+MY_PUBLIC_IP=$(dig +short txt ch whoami.cloudflare @1.0.0.1 | tr '"' ' ')
+echo "INFO: Deplying ${STACK_APP_INFRA} with restricted access to $MY_PUBLIC_IP"
+aws s3 cp cloudformation/setup-nginx.sh s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-nginx-instance/setup-nginx.sh
+aws cloudformation deploy --stack-name $STACK_APP_INFRA --template-file cloudformation/application-infrastructure.yml --parameter-overrides "VPCStackName=${STACK_CORE_VPC}" "SecurityGroupsStackName=${STACK_CORE_SGS}" "CoreBucketsStackName=${STACK_CORE_BUCKETS}" "IpAddress=${MY_PUBLIC_IP}" "AmazonLinuxImageId=${AMAZON_LINUX_IMAGE_ID}" --capabilities CAPABILITY_IAM
+
+echo "INFO: Import key pair"
+aws ec2 import-key-pair --key-name workstation.pem --public-key-material fileb://$HOME/.ssh/id_rsa.pub | cat
+
+echo "INFO: Copy datalog files to S3"
+aws s3 cp datalog/clean/laps.json s3://$DEPLOYMENT_ARTIFACTS_BUCKET/test-data/
+aws s3 cp datalog/clean/telemetry.json s3://$DEPLOYMENT_ARTIFACTS_BUCKET/test-data/
+aws s3 cp datalog/clean/turns.json s3://$DEPLOYMENT_ARTIFACTS_BUCKET/test-data/
+
+echo "INFO: Deploying ${STACK_DEV_INSTANCE}"
+aws s3 cp cloudformation/setup-dev-instance.sh s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-dev-instance/setup-dev-instance.sh
+aws s3 cp cloudformation/load-test-data.sh s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-dev-instance/load-test-data.sh
+aws cloudformation deploy --stack-name $STACK_DEV_INSTANCE --capabilities CAPABILITY_IAM --template-file cloudformation/dev-instance.yml --parameter-overrides "VPCStackName=${STACK_CORE_VPC}" "SecurityGroupsStackName=${STACK_CORE_SGS}" "CoreBucketsStackName=${STACK_CORE_BUCKETS}" "ApplicationInfrastructureStackName=${STACK_APP_INFRA}" "AmazonLinuxImageId=${AMAZON_LINUX_IMAGE_ID}"
+
+echo "---------------------"
+echo "INFO: Setup done"
+echo "INFO: To deploy Corner Speed Analysis Flink app, change to app directory and run deploy.sh"
+echo "---------------------"
+
+echo ""
+echo "INFO: SSH into dev instance below to access private resources in the VPC"
+DEV_INSTANCE=$(aws cloudformation describe-stacks --stack-name $STACK_DEV_INSTANCE | jq -r -c '.Stacks[0].Outputs[] | select(.OutputKey == "PublicDnsName") | .OutputValue')
+echo "ssh ec2-user@$DEV_INSTANCE"
+
+echo ""
+OPEN_SEARCH_DASHBOARD_URL=$(aws cloudformation describe-stacks --stack-name $STACK_APP_INFRA | jq -r -c '.Stacks[0].Outputs[] | select(.OutputKey == "NginxInstanceDNS") | .OutputValue')
+echo "OPEN_SEARCH_DASHBOARD_URL: https://$OPEN_SEARCH_DASHBOARD_URL/_dashboards"

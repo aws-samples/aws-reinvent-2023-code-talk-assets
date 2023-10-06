@@ -1,0 +1,80 @@
+[[snippets]]
+  description = "Kafka create topic"
+  command = "kafka-topics.sh --create --topic $KAFKA_TOPIC --bootstrap-server $KAFKA_BROKERS"
+  output = ""
+
+[[snippets]]
+  description = "Kafka describe topic"
+  command = "kafka-topics.sh --describe --topic $KAFKA_TOPIC --bootstrap-server $KAFKA_BROKERS"
+  output = ""
+
+[[snippets]]
+  description = "Kafka console producer"
+  command = "kafka-console-producer.sh --topic $KAFKA_TOPIC —bootstrap-server $KAFKA_BROKERS"
+  output = ""
+
+[[snippets]]
+  description = "Kafka console consumer"
+  command = "kafka-console-consumer.sh --topic $KAFKA_TOPIC --from-beginning --bootstrap-server $KAFKA_BROKERS"
+  output = ""
+
+[[snippets]]
+  description = "Kafka reassign partitions"
+  command = "kafka-reassign-partitions.sh --bootstrap-server $KAFKA_BROKERS --topics-to-move-json-file topics-to-move.json --broker-list \"1,2,3,4,5,6\" --generate"
+  output = ""
+
+[[snippets]]
+  description = "Kafka list topics"
+  command = "kafka-topics.sh --list --bootstrap-server $KAFKA_BROKERS"
+  output = ""
+
+[[snippets]]
+  description = "MSK list cluster arns"
+  command = "aws kafka list-clusters | jq \".ClusterInfoList[].ClusterArn\""
+  output = ""
+
+[[snippets]]
+  description = "MSK list cluster name and arn"
+  command = "aws kafka list-clusters | jq '.ClusterInfoList[] | \"\\(.ClusterName) \\(.ClusterArn)\"'"
+  output = ""
+
+[[snippets]]
+  description = "MSK export broker variable"
+  command = "export KAFKA_BROKER=$(aws kafka get-bootstrap-brokers --cluster-arn $MSK_CLUSTER_ARN | jq -r \".BootstrapBrokerString\")"
+  output = ""
+
+[[snippets]]
+  description = "MSK export Kafka broker tls"
+  command = "export KAFKA_BROKER_TLS=$(aws kafka get-bootstrap-brokers --cluster-arn $MSK_CLUSTER_ARN | jq -r \".BootstrapBrokerStringTls\")"
+  output = ""
+
+[[snippets]]
+  description = "MSK export broker iam"
+  command = "export KAFKA_BROKER_SASL_IAM=$(aws kafka get-bootstrap-brokers --cluster-arn $MSK_CLUSTER_ARN | jq -r \".BootstrapBrokerStringSaslIam\")"
+  output = ""
+
+[[snippets]]
+  description = "CloudFormation show all stable stacks"
+  command = "aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE | jq '.StackSummaries[] | \"\\(.StackName) \\(.StackId)\"'"
+  output = ""
+
+[[snippets]]
+  description = "MSK get bootstrap brokers"
+  command = "aws kafka get-bootstrap-brokers --cluster-arn <arn>"
+  output = ""
+
+[[snippets]]
+  description = "CloudFormation register a resource in registry"
+  command = "cfn submit -v --region <region>"
+  output = ""
+
+[[snippets]]
+  description = "SecretsManager Delete secrets without recovery"
+  command = "aws secretsmanager delete-secret --secret-id <secret-id> --force-delete-without-recovery"
+  output = ""
+
+[[snippets]]
+  description = "Maven Create new Apache Flink Java project"
+  command = "mvn archetype:generate -DarchetypeGroupId=org.apache.flink -DarchetypeArtifactId=flink-quickstart-java -DarchetypeVersion=1.15.2 -DgroupId=org.sample -DartifactId=msf-demo -Dversion=1.0-SNAPSHOT -o"
+  output = ""
+  

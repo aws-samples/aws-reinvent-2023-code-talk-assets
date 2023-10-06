@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+if [ -z $STACK_PREFIX ]; then
+    STACK_PREFIX="csa-v1"
+fi
+
+STACK_CORE_FUNCTIONS="${STACK_PREFIX}-core-functions"
+STACK_CORE_BUCKETS="${STACK_PREFIX}-core-buckets"
+STACK_CORE_VPC="${STACK_PREFIX}-core-vpc"
+STACK_CORE_SGS="${STACK_PREFIX}-core-security-groups"
+STACK_APP_INFRA="${STACK_PREFIX}-app-infra"
+STACK_DEV_INSTANCE="${STACK_PREFIX}-dev-instance"
+STACK_MSF_APP="${STACK_PREFIX}-app"
+
+STACKS=($STACK_MSF_APP $STACK_APP_INFRA $STACK_DEV_INSTANCE $STACK_CORE_SGS $STACK_CORE_VPC $STACK_CORE_BUCKETS $STACK_CORE_FUNCTIONS)
+
+for STACK in "${STACKS[@]}"
+do
+    echo "INFO: Deleting ${STACK}"
+    aws cloudformation delete-stack --stack-name $STACK
+    aws cloudformation wait stack-delete-complete --stack-name $STACK
+done

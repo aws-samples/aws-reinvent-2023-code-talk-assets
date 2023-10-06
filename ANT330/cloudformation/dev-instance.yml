@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+ EC2 instance with development tools to troubleshoot corner speed analysis app.
+
+ You can SSH into this VPC resources such as MSK cluster.
+ Creator's default SSH key is configured with this instance. You can SSH in from
+ the host you launched this stack using:
+ ssh ec2-user@<instance-public-dns>
+
+ In addition to installing common development tools, user data script for this 
+ instance loads test data for corner speed analysis app into MSK.
+
+Parameters:
+  VPCStackName:
+    Type: String
+  SecurityGroupsStackName:
+    Type: String
+  CoreBucketsStackName:
+    Type: String
+  ApplicationInfrastructureStackName:
+    Type: String
+  AmazonLinuxImageId:
+    Type: String
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH connections into EC2
+      VpcId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-VPCID"
+      SecurityGroupEgress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "-1"
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "tcp"
+          FromPort: 3000
+          ToPort: 10000  
+
+
+  AdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AdministratorAccess" 
+
+  DevInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AdminRole
+
+  DevInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy: 
+        ResourceSignal:
+          Timeout: PT30M
+    Properties:
+      KeyName: "workstation.pem"
+      DisableApiTermination: False
+      ImageId: !Ref AmazonLinuxImageId
+      InstanceType: "m6i.xlarge"
+      SubnetId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-PublicSubnet2ID"
+      Monitoring: True
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-HTTP-Ingress"
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-SSH-Ingress"
+      IamInstanceProfile: !Ref DevInstanceProfile
+      UserData: 
+        Fn::Base64: !Sub
+        - |
+          #!/bin/bash -ex
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+            # user data begin here
+            sudo yum install jq -y
+            DEPLOYMENT_ARTIFACTS_BUCKET=$(aws cloudformation describe-stacks --stack-name ${CORE_BUCKETS_STACK_NAME} --region ${AWS::Region} | jq -r -c '.Stacks[0].Outputs[] | select(.OutputKey == "DeploymentArtifactsBucket") | .OutputValue')
+
+            aws s3 cp s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-dev-instance/setup-dev-instance.sh /home/ec2-user/downloads/setup-dev-instance.sh
+            chmod +x /home/ec2-user/downloads/setup-dev-instance.sh
+            ./home/ec2-user/downloads/setup-dev-instance.sh
+
+            source /home/ec2-user/.bash_profile  
+
+            aws s3 cp s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-dev-instance/load-test-data.sh /home/ec2-user/downloads/load-test-data.sh
+            chmod +x /home/ec2-user/downloads/load-test-data.sh
+            AWS_REGION=${AWS::Region} DEPLOYMENT_ARTIFACTS_BUCKET=$DEPLOYMENT_ARTIFACTS_BUCKET STACK_NAME=${ApplicationInfrastructureStackName} ./home/ec2-user/downloads/load-test-data.sh
+
+            cfn-signal -e $? --stack ${AWS::StackName} --resource DevInstance --region ${AWS::Region}
+
+        - CORE_BUCKETS_STACK_NAME: !Ref CoreBucketsStackName
+
+
+Outputs:
+  PublicDnsName:
+    Description: DNS name that can be used to access Dev instance
+    Value: !GetAtt DevInstance.PublicDnsName
+    Export:
+      Name: !Sub ${AWS::StackName}-DNS-Name

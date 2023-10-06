@@ -1,0 +1,380 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: MSK and OpenSearch setup required by corner speed analysis app.
+Parameters:
+  VPCStackName:
+    Type: String
+  SecurityGroupsStackName:
+    Type: String
+  CoreBucketsStackName:
+    Type: String
+  IpAddress:
+    Type: String  
+  AmazonLinuxImageId:
+    Type: String
+Resources:
+  MskCluster:
+    Type: 'AWS::MSK::Cluster'
+    Properties:
+      ClusterName: !Sub "${AWS::StackName}-msk-cluster"
+      KafkaVersion: 2.8.1
+      NumberOfBrokerNodes: 3
+      ClientAuthentication:
+        Sasl:
+          Iam:
+            Enabled: true
+        Unauthenticated:
+          Enabled: true
+      EncryptionInfo:
+        EncryptionInTransit:
+          ClientBroker: TLS_PLAINTEXT
+      BrokerNodeGroupInfo:
+        InstanceType: kafka.m5.large
+        ClientSubnets:
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet1AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet2AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet3AID"
+        SecurityGroups:
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+      OpenMonitoring:
+        Prometheus:
+          JmxExporter:
+            EnabledInBroker: true
+          NodeExporter:
+            EnabledInBroker: true
+
+  MskBrokerAddressParameterCreatorRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+          - PolicyName: VpcConfigurationPolicy
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: VPCReadOnlyPermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:DescribeVpcs
+                    - ec2:DescribeSubnets
+                    - ec2:DescribeSecurityGroups
+                    - ec2:DescribeDhcpOptions
+                  Resource: "*"
+                - Sid: ENIReadWritePermissions
+                  Effect: Allow
+                  Action:
+                    - ec2:CreateNetworkInterface
+                    - ec2:CreateNetworkInterfacePermission
+                    - ec2:DescribeNetworkInterfaces
+                    - ec2:DeleteNetworkInterface
+                  Resource: "*"
+                - Sid: GetMskBootstrapBrokers 
+                  Effect: Allow
+                  Action:
+                    - kafka:GetBootstrapBrokers 
+                  Resource: !Ref MskCluster 
+                - Sid: CreateSSMParameterStoreValue
+                  Effect: Allow
+                  Action:
+                    - ssm:PutParameter  
+                    - aws:RequestTag/${TagKey}
+                    - aws:TagKeys
+                    - ssm:Overwrite
+                    - ssm:DeleteParameter
+                  Resource: "*"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+  
+  MskBrokerAddressParameterCreatorFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      MemorySize: 1024
+      Runtime: "python3.9"
+      Handler: "index.handler"
+      Role: !GetAtt MskBrokerAddressParameterCreatorRole.Arn
+      Timeout: 120
+      VpcConfig:
+        SubnetIds:
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet1AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet2AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet3AID"
+        SecurityGroupIds:
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Internet-Access"
+      Environment:
+        Variables:
+          SSM_PARAMETER_NAME: !Sub "${AWS::StackName}-msk-cluster-bootstrap-broker-string"
+      Code:
+        ZipFile: |
+          import os
+          import cfnresponse
+          import logging
+          import signal
+          import boto3
+          import botocore
+
+          LOGGER = logging.getLogger()
+          LOGGER.setLevel(logging.INFO)
+
+          timeout_seconds = 45
+
+          ssm_parameter_name = os.environ["SSM_PARAMETER_NAME"] 
+          msk = boto3.client("kafka")
+          ssm = boto3.client("ssm")
+
+          def handler(event, context):
+              signal.alarm(timeout_seconds)
+              try:
+                  LOGGER.info("Request Event: %s", event)
+                  if event["RequestType"] == "Create":
+                      arn = event["ResourceProperties"]["MskClusterArn"]
+                      brokers = msk.get_bootstrap_brokers(ClusterArn=arn)
+                      bootstrapBrokerString = brokers["BootstrapBrokerString"]
+                      ssm.put_parameter(
+                        Name= ssm_parameter_name,
+                        Value=bootstrapBrokerString,
+                        Type="String",
+                      )
+                      
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource created"})
+                  elif event["RequestType"] == "Update":
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource updated"})
+                  elif event["RequestType"] == "Delete":
+                      ssm.delete_parameter(Name=ssm_parameter_name)
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource deleted"})
+                  else:
+                      err = f"Unknown RequestType: {event['RequestType']}"
+                      LOGGER.error(err)
+                      cfnresponse.send(
+                          event, context, cfnresponse.FAILED, {"Message": err})
+              except botocore.exceptions.ClientError as e:
+                  if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                      cfnresponse.send(event, context, cfnresponse.FAILED,
+                                  {"Message": str(e)})
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {
+                                      "Message": "Resource deleted"})
+              except Exception as e:
+                  LOGGER.error("Failed %s", e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED,
+                                  {"Message": str(e)})
+
+
+          def timeout_handler(_signal, _frame):
+              '''Handle SIGALRM'''
+              raise Exception("Operation timed out")
+
+
+          signal.signal(signal.SIGALRM, timeout_handler)
+
+ 
+  MskBrokerAddressParameterCreator:
+    Type: "AWS::CloudFormation::CustomResource"
+    Properties:
+      ServiceToken: !GetAtt MskBrokerAddressParameterCreatorFunction.Arn
+      MskClusterArn: !Ref MskCluster
+
+
+  OpenSearchMasterPassword:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: !Sub "${AWS::StackName}-open-search-master-password"
+      Description: "Password for Open Search master user"
+      GenerateSecretString:
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+        IncludeSpace: False
+      
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 1
+
+  OpenSearchLogPolicy:
+   Type: AWS::Logs::ResourcePolicy
+   Properties:
+     PolicyName: AllowOpenSearchServiceLogs
+     PolicyDocument: !Sub "{ \"Version\": \"2012-10-17\", \"Statement\": [{ \"Sid\": \"\", \"Effect\": \"Allow\", \"Principal\": { \"Service\": \"es.amazonaws.com\"}, \"Action\":[ \"logs:PutLogEvents\",\"logs:CreateLogStream\"],\"Resource\": \"${LogGroup.Arn}\"}]}"
+
+  OpenSearchServiceDomain:
+    Type: AWS::OpenSearchService::Domain
+    DependsOn:
+         - OpenSearchMasterPassword
+         - OpenSearchLogPolicy
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-os-domain"  
+      EngineVersion: "OpenSearch_1.3"
+      ClusterConfig:
+        DedicatedMasterEnabled: true
+        InstanceCount: "2"
+        ZoneAwarenessEnabled: true
+        InstanceType: "c5.xlarge.search"
+        DedicatedMasterType: "c5.xlarge.search"
+        DedicatedMasterCount: "3"
+      EBSOptions:
+        EBSEnabled: true
+        Iops: "0"
+        VolumeSize: "120"
+        VolumeType: "gp2"
+      DomainEndpointOptions:
+        EnforceHTTPS: True
+      NodeToNodeEncryptionOptions:
+        Enabled: True
+      EncryptionAtRestOptions:
+        Enabled: True
+      AdvancedSecurityOptions:
+        Enabled: True
+        InternalUserDatabaseEnabled: True
+        MasterUserOptions:
+          MasterUserName: admin
+          MasterUserPassword: !Sub "{{resolve:secretsmanager:${AWS::StackName}-open-search-master-password:SecretString}}"
+      AccessPolicies:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              AWS: "*"
+            Action: "es:*"
+            Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-os-domain/*"
+      LogPublishingOptions:
+        ES_APPLICATION_LOGS:
+            CloudWatchLogsLogGroupArn: !GetAtt LogGroup.Arn
+            Enabled: true
+        SEARCH_SLOW_LOGS:
+            CloudWatchLogsLogGroupArn: !GetAtt LogGroup.Arn
+            Enabled: true
+        INDEX_SLOW_LOGS:
+            CloudWatchLogsLogGroupArn: !GetAtt LogGroup.Arn
+            Enabled: true
+      VPCOptions:
+        SubnetIds:
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet1AID"
+          - Fn::ImportValue: 
+              !Sub "${VPCStackName}-PrivateSubnet2AID"
+        SecurityGroupIds:
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+          - Fn::ImportValue: 
+              !Sub "${SecurityGroupsStackName}-Internet-Access"
+      AdvancedOptions:
+        rest.action.multi.allow_explicit_index: 'true'
+        override_main_response_version: 'true'
+
+  OpenSearchDomainEndpoint:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${AWS::StackName}-open-search-endpoint"
+      Type: String
+      Value: !GetAtt OpenSearchServiceDomain.DomainEndpoint
+      Description: Open search domain endpoint
+
+  NginxInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+          - PolicyName: InstanceConfigurationAccess
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Sid: AllowDescribingStacks
+                  Effect: Allow
+                  Action:
+                    - cloudformation:DescribeStacks
+                  Resource: "*"
+                - Sid: AllowS3Access
+                  Effect: Allow
+                  Action:
+                    - s3:GetObject
+                    - s3:ListBucket
+                    - s3:GetObjectVersion
+                    - s3:GetObjectTagging
+                  Resource: 
+                    - !Sub 
+                      - "arn:${AWS::Partition}:s3:::${BucketName}"
+                      - BucketName: 
+                          Fn::ImportValue: 
+                            !Sub "${CoreBucketsStackName}-DeploymentArtifactsBucket"
+                    - !Sub 
+                      - "arn:${AWS::Partition}:s3:::${BucketName}/*"
+                      - BucketName: 
+                          Fn::ImportValue: 
+                            !Sub "${CoreBucketsStackName}-DeploymentArtifactsBucket"
+
+  DevInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref NginxInstanceRole
+
+  NginxInstance:
+    Type: AWS::EC2::Instance
+    CreationPolicy: 
+        ResourceSignal:
+          Timeout: PT15M
+    Properties:
+      KeyName: "workstation.pem"
+      DisableApiTermination: False
+      ImageId: !Ref AmazonLinuxImageId
+      InstanceType: "t3.xlarge"
+      SubnetId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-PublicSubnet2ID"
+      Monitoring: True
+      SecurityGroupIds:
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-Intra-VPC-Resource-Access"
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-HTTP-Ingress"
+        - Fn::ImportValue:
+            !Sub "${SecurityGroupsStackName}-SSH-Ingress"
+      IamInstanceProfile: !Ref DevInstanceProfile
+      UserData: 
+        Fn::Base64: !Sub
+        - |
+          #!/bin/bash -ex
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+            # user data begin here
+            sudo yum install jq -y
+            DEPLOYMENT_ARTIFACTS_BUCKET=$(aws cloudformation describe-stacks --stack-name ${CORE_BUCKETS_STACK_NAME} --region ${AWS::Region} | jq -r -c '.Stacks[0].Outputs[] | select(.OutputKey == "DeploymentArtifactsBucket") | .OutputValue')
+            aws s3 cp s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-nginx-instance/setup-nginx.sh /home/ec2-user/downloads/setup-nginx.sh
+            chmod +x /home/ec2-user/downloads/setup-nginx.sh
+            STACK_NAME=${AWS::StackName} AWS_REGION=${AWS::Region} OPEN_SEARCH_ENDPOINT=${OPEN_SEARCH_ENDPOINT} ./home/ec2-user/downloads/setup-nginx.sh
+        - CORE_BUCKETS_STACK_NAME: !Ref CoreBucketsStackName
+          OPEN_SEARCH_ENDPOINT: !GetAtt OpenSearchServiceDomain.DomainEndpoint
+
+Outputs:
+  NginxInstanceDNS:
+    Description: DNS name that can be used to access Nginx instance
+    Value: !GetAtt NginxInstance.PublicDnsName
+    Export:
+      Name: !Sub ${AWS::StackName}-Nginx-DNS-Name

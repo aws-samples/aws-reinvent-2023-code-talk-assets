@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Security groups controlling access to corner speed analysis app resources
+Parameters:
+  VPCStackName:
+    Type: String
+Resources:
+  IntraVPCResourceAccess:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow everything within VPC
+      VpcId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-VPCID"
+
+  IntraVPCIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref IntraVPCResourceAccess
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref IntraVPCResourceAccess
+
+  IntraVPCEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref IntraVPCResourceAccess
+      IpProtocol: "-1"
+      DestinationSecurityGroupId: !Ref IntraVPCResourceAccess
+
+  InternetAccess:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow everything within VPC
+      VpcId: 
+        Fn::ImportValue:
+          !Sub "${VPCStackName}-VPCID"
+
+  InternetAccessEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref InternetAccess
+      IpProtocol: "-1"
+      CidrIp: "0.0.0.0/0"
+
+  HTTPIngress:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow inbound HTTP traffic
+      VpcId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          CidrIp: "0.0.0.0/0"
+          FromPort: 80
+          ToPort: 80
+        - IpProtocol: "tcp"
+          CidrIp: "0.0.0.0/0"
+          FromPort: 443
+          ToPort: 443
+
+  SSHIngress:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow inbound SSH traffic
+      VpcId: 
+        Fn::ImportValue: 
+          !Sub "${VPCStackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          CidrIp: "0.0.0.0/0"
+          FromPort: 22
+          ToPort: 22
+   
+Outputs:
+  IntraVPCResourceAccess:
+    Description: Allow connectivity between resources within VPC
+    Value: !Ref IntraVPCResourceAccess
+    Export:
+      Name: !Sub ${AWS::StackName}-Intra-VPC-Resource-Access
+
+  InternetAccess:
+    Description: Allow internet access
+    Value: !Ref InternetAccess
+    Export:
+      Name: !Sub ${AWS::StackName}-Internet-Access
+
+  HTTPIngress:
+    Description: Allow inbound http access
+    Value: !Ref HTTPIngress
+    Export:
+      Name: !Sub ${AWS::StackName}-HTTP-Ingress
+
+  SSHIngress:
+    Description: Allow inbound ssh access
+    Value: !Ref SSHIngress
+    Export:
+      Name: !Sub ${AWS::StackName}-SSH-Ingress
