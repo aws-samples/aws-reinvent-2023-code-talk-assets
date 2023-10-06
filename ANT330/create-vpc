@@ -33,13 +33,13 @@ aws cloudformation deploy --stack-name $STACK_CORE_VPC --capabilities CAPABILITY
 echo "INFO: Deploying ${STACK_CORE_SGS}"
 aws cloudformation deploy --stack-name $STACK_CORE_SGS --template-file cloudformation/security-groups.yml --parameter-overrides "VPCStackName=${STACK_CORE_VPC}"
 
+echo "INFO: Import key pair"
+aws ec2 import-key-pair --key-name workstation.pem --public-key-material fileb://$HOME/.ssh/id_rsa.pub | cat
+
 MY_PUBLIC_IP=$(dig +short txt ch whoami.cloudflare @1.0.0.1 | tr '"' ' ')
 echo "INFO: Deplying ${STACK_APP_INFRA} with restricted access to $MY_PUBLIC_IP"
 aws s3 cp cloudformation/setup-nginx.sh s3://$DEPLOYMENT_ARTIFACTS_BUCKET/workload-nginx-instance/setup-nginx.sh
 aws cloudformation deploy --stack-name $STACK_APP_INFRA --template-file cloudformation/application-infrastructure.yml --parameter-overrides "VPCStackName=${STACK_CORE_VPC}" "SecurityGroupsStackName=${STACK_CORE_SGS}" "CoreBucketsStackName=${STACK_CORE_BUCKETS}" "IpAddress=${MY_PUBLIC_IP}" "AmazonLinuxImageId=${AMAZON_LINUX_IMAGE_ID}" --capabilities CAPABILITY_IAM
-
-echo "INFO: Import key pair"
-aws ec2 import-key-pair --key-name workstation.pem --public-key-material fileb://$HOME/.ssh/id_rsa.pub | cat
 
 echo "INFO: Copy datalog files to S3"
 aws s3 cp datalog/clean/laps.json s3://$DEPLOYMENT_ARTIFACTS_BUCKET/test-data/
