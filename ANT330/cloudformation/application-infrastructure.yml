@@ -200,7 +200,7 @@ Resources:
       Description: "Password for Open Search master user"
       GenerateSecretString:
         PasswordLength: 30
-        ExcludeCharacters: '"@/\'
+        ExcludeCharacters: '$[]{}?+!*\/^%&#"'';'
         IncludeSpace: False
       
 
