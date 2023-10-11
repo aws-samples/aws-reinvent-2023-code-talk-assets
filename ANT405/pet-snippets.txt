@@ -1,31 +1,31 @@
 [[snippets]]
   description = "Kafka create topic"
-  command = "kafka-topics.sh --create --topic $KAFKA_TOPIC --bootstrap-server $KAFKA_BROKERS"
+  command = "kafka-topics.sh --create --topic <topic> --bootstrap-server <bootstrap-server>"
   output = ""
 
 [[snippets]]
   description = "Kafka describe topic"
-  command = "kafka-topics.sh --describe --topic $KAFKA_TOPIC --bootstrap-server $KAFKA_BROKERS"
+  command = "kafka-topics.sh --describe --topic <topic> --bootstrap-server <bootstrap-server>"
   output = ""
 
 [[snippets]]
   description = "Kafka console producer"
-  command = "kafka-console-producer.sh --topic $KAFKA_TOPIC —bootstrap-server $KAFKA_BROKERS"
+  command = "kafka-console-producer.sh --topic <topic> —bootstrap-server <bootstrap-server>"
   output = ""
 
 [[snippets]]
   description = "Kafka console consumer"
-  command = "kafka-console-consumer.sh --topic $KAFKA_TOPIC --from-beginning --bootstrap-server $KAFKA_BROKERS"
+  command = "kafka-console-consumer.sh --topic <topic> --from-beginning --bootstrap-server <bootstrap-server>"
   output = ""
 
 [[snippets]]
   description = "Kafka reassign partitions"
-  command = "kafka-reassign-partitions.sh --bootstrap-server $KAFKA_BROKERS --topics-to-move-json-file topics-to-move.json --broker-list \"1,2,3,4,5,6\" --generate"
+  command = "kafka-reassign-partitions.sh --bootstrap-server <bootstrap-server> --topics-to-move-json-file <topics-to-move-json-file> --broker-list <broker-list> --generate"
   output = ""
 
 [[snippets]]
   description = "Kafka list topics"
-  command = "kafka-topics.sh --list --bootstrap-server $KAFKA_BROKERS"
+  command = "kafka-topics.sh --list --bootstrap-server <bootstrap-server>"
   output = ""
 
 [[snippets]]
@@ -75,6 +75,76 @@
 
 [[snippets]]
   description = "Maven Create new Apache Flink Java project"
-  command = "mvn archetype:generate -DarchetypeGroupId=org.apache.flink -DarchetypeArtifactId=flink-quickstart-java -DarchetypeVersion=1.15.2 -DgroupId=org.sample -DartifactId=msf-demo -Dversion=1.0-SNAPSHOT -o"
+  command = "mvn archetype:generate -DarchetypeGroupId=org.apache.flink -DarchetypeArtifactId=flink-quickstart-java -DarchetypeVersion=1.15.4 -DgroupId=org.example -DartifactId=msf-demo -Dversion=1.0-SNAPSHOT -o"
   output = ""
-  
+
+[[snippets]]
+  description = "System list tcp listening ports"
+  command = "lsof -nP -iTCP -sTCP:LISTEN"
+  output = ""
+
+[[snippets]]
+  description = "MSF Demo Copy dependencies"
+  command = "cat ~/Documents/repos/aws-reinvent-2023-code-talk-assets/ANT405/dependencies.txt | pbcopy"
+  output = ""
+
+[[snippets]]
+  description = "MSF Demo Quick create POJOs"
+  command = "mkdir -p src/main/java/org/example/types && cp ~/Documents/repos/aws-reinvent-2023-code-talk-assets/ANT405/app/src/main/java/org/example/types/*.java src/main/java/org/example/types/"
+  output = ""
+
+[[snippets]]
+  description = "List items in a directory"
+  command = "ls <dir>"
+  output = ""
+
+[[snippets]]
+  description = "Docker system prune with volumes"
+  command = "docker system prune --force --volumes"
+  output = ""
+
+[[snippets]]
+  description = "EC2 Describe availability zones in the region"
+  command = "aws ec2 describe-availability-zones | jq '.AvailabilityZones[].ZoneName'"
+  output = ""
+
+[[snippets]]
+  description = "System show my public IP"
+  command = "dig +short txt ch whoami.cloudflare @1.0.0.1"
+  output = ""
+
+[[snippets]]
+  description = "MSF Demo Copy DataStreamJob source"
+  command = "cat ~/Documents/repos/aws-reinvent-2023-code-talk-assets/ANT405/app/src/main/java/org/example/DataStreamJob.java | pbcopy"
+  output = ""
+
+[[snippets]]
+  description = "pet new"
+  command = "aws cloudformation describe-stacks --stack-name msf-demo-dev-instance --query \"Stacks[0].Outputs\""
+  output = ""
+
+[[snippets]]
+  description = "CloudFormation show stack outputs"
+  command = "aws cloudformation describe-stacks --stack-name <stack name> --query \"Stacks[0].Outputs\""
+  output = ""
+
+[[snippets]]
+  description = "nc Connect to a host"
+  command = "nc -v <host name> <port>"
+  output = ""
+
+[[snippets]]
+  description = "nc Scan ports"
+  command = "nc -vz <host name> <port range>"
+  output = ""
+
+[[snippets]]
+  description = "openssl Create new certificate"
+  command = "openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout <key.key> -out <out.crt>"
+  output = ""
+
+[[snippets]]
+  description = "SecretsManager Copy secret value to clipboard"
+  command = "aws secretsmanager get-secret-value --secret-id <secret-id> --query \"SecretString\" --output text | pbcopy"
+  output = ""
+ 
