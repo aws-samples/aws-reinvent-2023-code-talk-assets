@@ -6,7 +6,6 @@ package org.example;
 import com.amazonaws.services.kinesisanalytics.runtime.KinesisAnalyticsRuntime;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.functions.JoinFunction;
-import org.apache.flink.api.connector.sink2.SinkWriter;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
@@ -15,7 +14,6 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.connector.opensearch.sink.OpensearchEmitter;
 import org.apache.flink.connector.opensearch.sink.OpensearchSink;
 import org.apache.flink.connector.opensearch.sink.OpensearchSinkBuilder;
-import org.apache.flink.connector.opensearch.sink.RequestIndexer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -64,105 +62,101 @@ public class DataStreamJob {
 
         final Properties config = getConfig(env);
 
-        final String kafkaBootstrapServers = (String) config.getOrDefault(PROPERTY_KAFKA_BOOTSTRAP_SERVERS, DEFAULT_KAFKA_BOOTSTRAP_SERVERS);
+        final String kafkaBootstrapServers =
+                (String) config.getOrDefault(PROPERTY_KAFKA_BOOTSTRAP_SERVERS, DEFAULT_KAFKA_BOOTSTRAP_SERVERS);
 
-        final KafkaSource<Turn> turnsTopic = KafkaSource.<Turn>builder()
-                                                     .setBootstrapServers(kafkaBootstrapServers)
-                                                     .setTopics("turns")
-                                                     .setStartingOffsets(OffsetsInitializer.earliest())
-                                                     .setValueOnlyDeserializer(new TurnSchema())
-                                                     .build();
+        final KafkaSource<Turn> turnsTopic =
+                KafkaSource.<Turn>builder()
+                        .setBootstrapServers(kafkaBootstrapServers)
+                        .setTopics("turns")
+                        .setStartingOffsets(OffsetsInitializer.earliest())
+                        .setValueOnlyDeserializer(new TurnSchema())
+                        .build();
 
-        final KafkaSource<Lap> lapsTopic = KafkaSource.<Lap>builder()
-                                                   .setBootstrapServers(kafkaBootstrapServers)
-                                                   .setTopics("laps")
-                                                   .setStartingOffsets(OffsetsInitializer.earliest())
-                                                   .setValueOnlyDeserializer(new LapSchema())
-                                                   .build();
+        final KafkaSource<Lap> lapsTopic =
+                KafkaSource.<Lap>builder()
+                        .setBootstrapServers(kafkaBootstrapServers)
+                        .setTopics("laps")
+                        .setStartingOffsets(OffsetsInitializer.earliest())
+                        .setValueOnlyDeserializer(new LapSchema())
+                        .build();
 
-        final KafkaSource<Telemetry> telemetryTopic = KafkaSource.<Telemetry>builder()
-                                                              .setBootstrapServers(kafkaBootstrapServers)
-                                                              .setTopics("telemetry")
-                                                              .setStartingOffsets(OffsetsInitializer.earliest())
-                                                              .setValueOnlyDeserializer(new TelemetrySchema())
-                                                              .build();
+        final KafkaSource<Telemetry> telemetryTopic =
+                KafkaSource.<Telemetry>builder()
+                        .setBootstrapServers(kafkaBootstrapServers)
+                        .setTopics("telemetry")
+                        .setStartingOffsets(OffsetsInitializer.earliest())
+                        .setValueOnlyDeserializer(new TelemetrySchema())
+                        .build();
 
-        final DataStream<Turn> turns = env
-                                               .fromSource(
-                                                       turnsTopic,
-                                                       WatermarkStrategy
-                                                               .<Turn>forBoundedOutOfOrderness(Duration.ofSeconds(30))
-                                                               .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
-                                                               .withIdleness(Duration.ofSeconds(30)),
-                                                       "turns"
-                                               );
+        final DataStream<Turn> turns =
+                env.fromSource(
+                        turnsTopic,
+                        WatermarkStrategy
+                                .<Turn>forBoundedOutOfOrderness(Duration.ofSeconds(30))
+                                .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
+                                .withIdleness(Duration.ofSeconds(30)),
+                        "turns"
+                );
 
-        final DataStream<Lap> laps = env
-                                             .fromSource(
-                                                     lapsTopic,
-                                                     WatermarkStrategy
-                                                             .<Lap>forBoundedOutOfOrderness(Duration.ofSeconds(30))
-                                                             .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
-                                                             .withIdleness(Duration.ofSeconds(30)),
-                                                     "laps"
-                                             );
+        final DataStream<Lap> laps =
+                env.fromSource(
+                        lapsTopic,
+                        WatermarkStrategy
+                                .<Lap>forBoundedOutOfOrderness(Duration.ofSeconds(30))
+                                .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
+                                .withIdleness(Duration.ofSeconds(30)),
+                        "laps"
+                );
 
-        final DataStream<Telemetry> telemetry = env
-                                                        .fromSource(
-                                                                telemetryTopic,
-                                                                WatermarkStrategy
-                                                                        .<Telemetry>forBoundedOutOfOrderness(Duration.ofSeconds(30))
-                                                                        .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
-                                                                        .withIdleness(Duration.ofSeconds(30)),
-                                                                "telemetry"
-                                                        );
+        final DataStream<Telemetry> telemetry =
+                env.fromSource(
+                        telemetryTopic,
+                        WatermarkStrategy
+                                .<Telemetry>forBoundedOutOfOrderness(Duration.ofSeconds(30))
+                                .withTimestampAssigner((element, recordTimestamp) -> element.getTimestamp())
+                                .withIdleness(Duration.ofSeconds(30)),
+                        "telemetry"
+                );
 
-        final DataStream<CornerSpeed> cornerSpeed = turns
-                                                            .join(telemetry)
-                                                            .where(new KeySelector<Turn, Integer>() {
-                                                                @Override
-                                                                public Integer getKey(Turn value) throws Exception {
-                                                                    return value.getCorrelationID();
-                                                                }
-                                                            })
-                                                            .equalTo(new KeySelector<Telemetry, Integer>() {
-                                                                @Override
-                                                                public Integer getKey(Telemetry value) throws Exception {
-                                                                    return value.getCorrelationID();
-                                                                }
-                                                            })
-                                                            .window(TumblingEventTimeWindows.of(Time.seconds(1)))
-                                                            .allowedLateness(Time.minutes(15))
-                                                            .apply(new JoinFunction<Turn, Telemetry, Tuple2<Turn, Telemetry>>() {
-                                                                @Override
-                                                                public Tuple2 join(Turn first, Telemetry second) throws Exception {
-                                                                    return Tuple2.of(first, second);
-                                                                }
-                                                            })
-                                                            .join(laps)
-                                                            .where(new KeySelector<Tuple2<Turn, Telemetry>, Integer>() {
-                                                                @Override
-                                                                public Integer getKey(Tuple2<Turn, Telemetry> value) throws Exception {
-                                                                    return value.f0.getCorrelationID();
-                                                                }
-                                                            })
-                                                            .equalTo(new KeySelector<Lap, Integer>() {
-                                                                @Override
-                                                                public Integer getKey(Lap value) throws Exception {
-                                                                    return value.getCorrelationID();
-                                                                }
-                                                            })
-                                                            .window(TumblingEventTimeWindows.of(Time.seconds(1)))
-                                                            .allowedLateness(Time.minutes(15))
-                                                            .apply(new JoinFunction<Tuple2<Turn, Telemetry>, Lap, CornerSpeed>() {
-                                                                @Override
-                                                                public CornerSpeed join(Tuple2<Turn, Telemetry> first, Lap second) throws Exception {
-                                                                    Turn turn = first.f0;
-                                                                    Telemetry telem = first.f1;
-                                                                    Lap lap = second;
-                                                                    return new CornerSpeed(lap.getCurrentLapNum(), turn.getTurnID(), telem.getSpeed(), telem.getThrottle(), telem.getBrake(), telem.getTimestamp());
-                                                                }
-                                                            });
+        final DataStream<CornerSpeed> cornerSpeed =
+                turns.join(telemetry)
+                        .where((KeySelector<Turn, Integer>) value -> value.getCorrelationID())
+                        .equalTo(new KeySelector<Telemetry, Integer>() {
+                            @Override
+                            public Integer getKey(Telemetry value) throws Exception {
+                                return value.getCorrelationID();
+                            }
+                        })
+                        .window(TumblingEventTimeWindows.of(Time.seconds(1)))
+                        .allowedLateness(Time.minutes(15))
+                        .apply(new JoinFunction<Turn, Telemetry, Tuple2<Turn, Telemetry>>() {
+                            @Override
+                            public Tuple2 join(Turn first, Telemetry second) throws Exception {
+                                return Tuple2.of(first, second);
+                            }
+                        })
+                        .join(laps)
+                        .where((KeySelector<Tuple2<Turn, Telemetry>, Integer>) value -> value.f0.getCorrelationID())
+                        .equalTo(new KeySelector<Lap, Integer>() {
+                            @Override
+                            public Integer getKey(Lap value) throws Exception {
+                                return value.getCorrelationID();
+                            }
+                        })
+                        .window(TumblingEventTimeWindows.of(Time.seconds(1)))
+                        .allowedLateness(Time.minutes(15))
+                        .apply((JoinFunction<Tuple2<Turn, Telemetry>, Lap, CornerSpeed>) (first, second) -> {
+                            Turn turn = first.f0;
+                            Telemetry telem = first.f1;
+                            Lap lap = second;
+                            return new CornerSpeed(
+                                    lap.getCurrentLapNum(),
+                                    turn.getTurnID(), telem.getSpeed(),
+                                    telem.getThrottle(),
+                                    telem.getBrake(),
+                                    telem.getTimestamp());
+                        });
 
 
         final HttpHost openSearchHost = new HttpHost(
@@ -170,27 +164,25 @@ public class DataStreamJob {
                 Integer.valueOf((String) config.getOrDefault(PROPERTY_OPEN_SEARCH_PORT, DEFAULT_OPENSEARCH_PORT)),
                 (String) config.getOrDefault(PROPERTY_OPEN_SEARCH_SCHEME, DEFAULT_OPENSEARCH_SCHEME)
         );
-        OpensearchSinkBuilder<CornerSpeed> sinkBuilder = new OpensearchSinkBuilder<CornerSpeed>()
-                                                                 .setHosts(openSearchHost)
-                                                                 .setEmitter(new OpensearchEmitter<CornerSpeed>() {
-                                                                     @Override
-                                                                     public void emit(CornerSpeed cornerSpeed, SinkWriter.Context context, RequestIndexer requestIndexer) {
-                                                                         Map<String, Object> document = new HashMap<>();
-                                                                         document.put("turnId", cornerSpeed.getTurnID());
-                                                                         document.put("lapNo", cornerSpeed.getLapNo());
-                                                                         document.put("speed", cornerSpeed.getSpeed());
-                                                                         document.put("throttle", cornerSpeed.getThrottle());
-                                                                         document.put("brake", cornerSpeed.getBrake());
-                                                                         document.put("timestamp", new Date(cornerSpeed.getTimestamp()));
+        OpensearchSinkBuilder<CornerSpeed> sinkBuilder =
+                new OpensearchSinkBuilder<CornerSpeed>()
+                        .setHosts(openSearchHost)
+                        .setEmitter((OpensearchEmitter<CornerSpeed>) (cornerSpeed1, context, requestIndexer) -> {
+                            Map<String, Object> document = new HashMap<>();
+                            document.put("turnId", cornerSpeed1.getTurnID());
+                            document.put("lapNo", cornerSpeed1.getLapNo());
+                            document.put("speed", cornerSpeed1.getSpeed());
+                            document.put("throttle", cornerSpeed1.getThrottle());
+                            document.put("brake", cornerSpeed1.getBrake());
+                            document.put("timestamp", new Date(cornerSpeed1.getTimestamp()));
 
-                                                                         IndexRequest request = Requests.indexRequest()
-                                                                                                        .index("corner-speed-analysis")
-                                                                                                        .id(cornerSpeed.getTimestamp().toString())
-                                                                                                        .source(document);
+                            IndexRequest request = Requests.indexRequest()
+                                                           .index("corner-speed-analysis")
+                                                           .id(cornerSpeed1.getTimestamp().toString())
+                                                           .source(document);
 
-                                                                         requestIndexer.add(request);
-                                                                     }
-                                                                 });
+                            requestIndexer.add(request);
+                        });
 
         final String username = (String) config.getOrDefault(PROPERTY_OPEN_SEARCH_USERNAME, "");
         if (!username.equals("")) {
