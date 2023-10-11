@@ -45,7 +45,7 @@ cd app
 ./deploy.sh
 ```
 
-## Access Open Search Dashboard
+## Access Open Search dashboard
 - Navigate to OpenSearch dashboard URL shown at the end of `./create-vpc` command
 - Use the following command to copy OpenSearch master password to clipboard
 ```
@@ -57,6 +57,16 @@ aws secretsmanager get-secret-value --secret-id csa-v1-app-infra-open-search-mas
 ```
 
 - Login to OpenSearch dashboard with username: `admin` and the password in your clipboard
+
+## Create dashboard from a pre-defined template
+
+Follow these steps to quickly import dashboard configuration to OpenSearch.
+- Login to OpenSearch dashboards by following the steps described in previous step
+- Click on `Stack Management` option on the left hand side menu
+- Click on `Saved Objects` option on the left hand side menu
+- Click on `Import` button on the screen
+- Select `dashboard.ndjson` file in this repository
+- Click on `Import` button
 
 ## Cleaning up AWS Account
 
