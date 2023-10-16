@@ -1,17 +1,4 @@
-## My Project
+## AWS re:Invent 2023 Code Talk Assets
 
-TODO: Fill this README out!
-
-Be sure to:
-
-* Change the title in this README
-* Edit your repository description on GitHub
-
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
-
-## License
-
-This library is licensed under the MIT-0 License. See the LICENSE file.
+In this code repository, you will find all of the code talks given during AWS re:Invent, along with their associated code (if provided). Find the session code you wish to view and select it in the directory.
 
