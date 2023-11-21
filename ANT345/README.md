@@ -66,8 +66,11 @@ In a similair way to connect to Google BigQuery from AWS Glue,you will need to c
    
 ![base64-1](./images/base64-1.png)
 
-4. You can do this from the command line by running cat credentialsFile.json | base64 -w 0. Retain the output of this command, credentialString.
-5. In AWS Secrets Manager, create a secret using your Google Cloud Platform credentials. To create a secret in Secrets Manager, follow the steps provided above section.When selecting Key/value pairs, create a pair for the key credentials with the value credentialString.
+4. You can do this from the command line by running cat credentialsFile.json | base64 -w 0. Retain the output of this command, `credentialString`.
+
+![base64-2](./images/base64-2.png)   
+
+6. In AWS Secrets Manager, create a secret using your Google Cloud Platform credentials. To create a secret in Secrets Manager, follow the steps provided above section.When selecting Key/value pairs, create a pair for the key credentials with the value `credentialString`.
 
 
 
