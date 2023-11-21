@@ -35,7 +35,8 @@ Let's start by creating the secret that Amazon Athena will use to connect to Sno
    ![secret_manager_2](./images/secret_manager_2.png)
    
 8. Leave the remaining fields at their defaults, and choose **Next**.
-9. Select **Store** to save your secret
+9. Select **Store** to save your secret.
+    It will automatically identify the key and value similar to below:
     
    ![secret_manager_3](./images/secret_manager_3.png)
    
