@@ -70,6 +70,8 @@ For Amazon Athena to connect to Google BigQuery, we need to provide our Google C
 9. Leave the remaining fields at their defaults, and choose **Next**.
 10. Select **Store** to save your secret
 
+    ![secret_manager_6](./images/secret_manager_6.png)
+
 ##### Configuring a secret for AWS Glue to connect to Google BigQuery
 In a similair way to connect to Google BigQuery from AWS Glue,you will need to create and store your Google Cloud Platform credentials in a AWS Secrets Manager secret, then associate that secret with a Google BigQuery AWS Glue connection.
 
@@ -78,11 +80,13 @@ In a similair way to connect to Google BigQuery from AWS Glue,you will need to c
    
    ![base64-1](./images/base64-1.png)
 
-4. You can do this from the command line by running cat credentialsFile.json | base64 -w 0. Retain the output of this command, `credentialString`.
+4. You can do this from the command line by running cat credentialsFile.json | base64 -w 0.
 
    ![base64-2](./images/base64-2.png)   
 
-6. In AWS Secrets Manager, create a secret using your Google Cloud Platform credentials. To create a secret in Secrets Manager, follow the steps provided above section.When selecting Key/value pairs, create a pair for the key credentials with the value `credentialString`.
+6. In AWS Secrets Manager, create a secret using your Google Cloud Platform credentials. To create a secret in Secrets Manager, follow the steps provided above section.When selecting Key/value pairs, create a pair for the key credentials with the value `credentials`.
+
+   ![secret_manager_7](./images/secret_manager_7.png)
 
 
 
