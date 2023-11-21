@@ -24,9 +24,9 @@ Let's start by creating the secret that Amazon Athena will use to connect to Sno
 4.	For **Secret type**, select **Other types of secret**.
 5.	Enter your Snowflake credentials as the following key-value pairs (click +Add row to add extra values). Choose Next.
 
-   Key = `username`, Value = `your_snowflake_username`
+       Key = `username`, Value = `your_snowflake_username`
 
-   Key = `password`, Value = `your_snowflake_password`
+       Key = `password`, Value = `your_snowflake_password`
 
    ![secret_manager_1](./images/secret_manager_1.png)
 
@@ -44,11 +44,13 @@ In a similair way, we can store the secret that is needed for AWS Glue to connec
 
 1. Repeat the Steps described for connecting Amazon Athena to Snowflake, except for Step 5, change to use the following key / value paris.
 
-   Key = `sfUser`, Value = `your_snowflake_username`
+     Key = `sfUser`, Value = `your_snowflake_username`
 
-   Key = `sfPassword`, Value = `your_snowflake_password`
+     Key = `sfPassword`, Value = `your_snowflake_password`
+
+   ![secret_manager_4](./images/secret_manager_4.png)
    
-2. In Step 6, use a **Secret name** such as `glue/snowflake`)
+3. In Step 6, use a **Secret name** such as `glue/snowflake`)
 
 #### Configuring secrets for Google BigQuery
 Let's now configure the secrets needed to connect to Google BigQuery, using both Amazon Athena and AWS Glue. 
