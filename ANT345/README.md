@@ -58,14 +58,17 @@ Let's now configure the secrets needed to connect to Google BigQuery, using both
 ##### Configuring a secret for Amazon Athena to connect to Google BigQuery
 For Amazon Athena to connect to Google BigQuery, we need to provide our Google Cloud service account credentials JSON file in plain text to Secrets Manager. Amazon Secrets Manager will ensure that the credentials are encrypted. 
 
-1.	Login to the **AWS Management Console**, and search for and open **Secrets Manager**
-2.	On the Secrets Manager console, choose **Secrets** 
-3.	Choose **Store a new secret**.
-4.	For **Secret type**, select **Other types of secret**.
-5.	Under **Key/Value pairs**, change to the **Plaintext** tab, and then copy and paste your Google service account credentials JSON into the text box. 
-6. Click **Next**, and then provide a **Secret name** (such as `athena/bigquery`), and optionally a **Description**. Then click **Next**
-7. Leave the remaining fields at their defaults, and choose **Next**.
-8. Select **Store** to save your secret
+1. Login to the **AWS Management Console**, and search for and open **Secrets Manager**
+2. On the Secrets Manager console, choose **Secrets** 
+3. Choose **Store a new secret**.
+4. For **Secret type**, select **Other types of secret**.
+5. Under **Key/Value pairs**, change to the **Plaintext** tab, and then copy and paste your Google service account credentials JSON into the text box.
+   
+   ![secret_manager_5](./images/secret_manager_5.png)
+  	
+8. Click **Next**, and then provide a **Secret name** (such as `athena/bigquery`), and optionally a **Description**. Then click **Next**
+9. Leave the remaining fields at their defaults, and choose **Next**.
+10. Select **Store** to save your secret
 
 ##### Configuring a secret for AWS Glue to connect to Google BigQuery
 In a similair way to connect to Google BigQuery from AWS Glue,you will need to create and store your Google Cloud Platform credentials in a AWS Secrets Manager secret, then associate that secret with a Google BigQuery AWS Glue connection.
