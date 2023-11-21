@@ -24,22 +24,29 @@ Let's start by creating the secret that Amazon Athena will use to connect to Sno
 4.	For **Secret type**, select **Other types of secret**.
 5.	Enter your Snowflake credentials as the following key-value pairs (click +Add row to add extra values). Choose Next.
 
-Key = `username`, Value = `your_snowflake_username`
+   Key = `username`, Value = `your_snowflake_username`
 
-Key = `password`, Value = `your_snowflake_password`
+   Key = `password`, Value = `your_snowflake_password`
+
+   ![secret_manager_1](./images/secret_manager_1.png)
 
 6. Click **Next**, and then provide a **Secret name** (such as `athena/snowflake`), and optionally a **Description**. Then click **Next**
-7. Leave the remaining fields at their defaults, and choose **Next**.
-8. Select **Store** to save your secret
-
+   
+   ![secret_manager_2](./images/secret_manager_2.png)
+   
+8. Leave the remaining fields at their defaults, and choose **Next**.
+9. Select **Store** to save your secret
+    
+   ![secret_manager_3](./images/secret_manager_3.png)
+   
 ##### Configuring a secret for AWS Glue to connect to Snowflake
 In a similair way, we can store the secret that is needed for AWS Glue to connect to Snowflake. The process is the same as for the Athena secret outlined above, except that the key names are different. 
 
 1. Repeat the Steps described for connecting Amazon Athena to Snowflake, except for Step 5, change to use the following key / value paris.
 
-Key = `sfUser`, Value = `your_snowflake_username`
+   Key = `sfUser`, Value = `your_snowflake_username`
 
-Key = `sfPassword`, Value = `your_snowflake_password`
+   Key = `sfPassword`, Value = `your_snowflake_password`
    
 2. In Step 6, use a **Secret name** such as `glue/snowflake`)
 
@@ -64,11 +71,11 @@ In a similair way to connect to Google BigQuery from AWS Glue,you will need to c
 1. Download the  Google Cloud service account credentials JSON file.
 2. base64 encode your downloaded credentials file. Login to your On an AWS CloudShell session or similar
    
-![base64-1](./images/base64-1.png)
+   ![base64-1](./images/base64-1.png)
 
 4. You can do this from the command line by running cat credentialsFile.json | base64 -w 0. Retain the output of this command, `credentialString`.
 
-![base64-2](./images/base64-2.png)   
+   ![base64-2](./images/base64-2.png)   
 
 6. In AWS Secrets Manager, create a secret using your Google Cloud Platform credentials. To create a secret in Secrets Manager, follow the steps provided above section.When selecting Key/value pairs, create a pair for the key credentials with the value `credentialString`.
 
